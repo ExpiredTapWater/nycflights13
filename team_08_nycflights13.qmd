@@ -1,0 +1,11 @@
+---
+title: "Week 04 Exercise 2 (Teamwork 1)"
+author: "Team 08 - Aldridge, Jun Hong, Chen Yi, Nabil, Adrian"
+date: "2024-05-28"
+output: html_document
+
+format: 
+  html:
+    embed-resources: true
+---
+

@@ -1,0 +1,471 @@
+---
+title: Team 08 NYC Flights 13
+author:
+  - ALDRIDGE MELROSE TAN QI REN
+  - LIEW XI JUN ADRIAN
+  - NABIL ZAFRAN BIN ZAINUDDIN
+  - SWEE JUNHONG
+  - CHUA CHEN YI
+date: "2024-06-28"
+date-format: "dddd MMM D, YYYY"
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc_location: left
+    number-sections: true
+    number-depth: 3
+    embed-resources: true
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(knitr)
+library(DBI)
+con_nycflights13 <- dbConnect(odbc::odbc(), dsn = "nycflights13", timeout = 10)
+```
+# Task 1: Establishing a Productive Software Environment for the Project
+
+## Completed SQL Script
+```{sql}
+#| connection: con_nycflights13
+#| eval: false
+#| echo: true
+
+-- Import table for airports
+DROP TABLE IF EXISTS airports CASCADE;
+CREATE TABLE airports (
+    faa CHAR(3),
+    name VARCHAR(255),
+    lat NUMERIC,
+    lon NUMERIC,
+    alt INT,
+    tz INT,
+    dst CHAR(1),
+    tzone VARCHAR(255),
+    PRIMARY KEY (faa)
+);
+
+COPY airports
+FROM 'your_path_to/airports.csv'
+CSV HEADER;
+```
+
+## Github Manage Access Tab Screenshot
+![Manage Access Screenshot](screenshots/ManageAccess.jpg)
+
+## Github Code Tab Screenshot
+![Code Tab Screenshot](screenshots/ManageAccess.jpg)
+
+# Task 2: Aggregating Information from the *flights* Table
+
+## Task 2-1
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH destination_counts AS (
+    SELECT 
+        origin,
+        COUNT(DISTINCT dest) AS num_destinations
+    FROM flights
+    WHERE origin IN ('JFK', 'LGA', 'EWR')
+    GROUP BY origin
+),
+ranked_airports AS (
+    SELECT 
+        origin,
+        num_destinations,
+        RANK() OVER (ORDER BY num_destinations DESC) AS rank
+    FROM destination_counts
+)
+SELECT 
+    a.faa AS airport_code,
+    a.name AS airport_name,
+    r.num_destinations,
+    r.rank
+FROM ranked_airports r
+INNER JOIN airports a ON r.origin = a.faa
+ORDER BY r.rank, a.faa;
+```
+
+## Task 2-2
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH seats_per_destination AS (
+    SELECT 
+        f.dest AS airport_code,
+        a.name AS airport_name,
+        SUM(p.seats) AS num_seats
+    FROM flights f
+    JOIN planes p ON f.tailnum = p.tailnum
+    JOIN airports a ON f.dest = a.faa
+    WHERE f.origin IN ('JFK', 'LGA', 'EWR')
+    GROUP BY f.dest, a.name
+),
+ranked_destinations AS (
+    SELECT 
+        airport_code,
+        airport_name,
+        num_seats,
+        RANK() OVER (ORDER BY num_seats DESC) AS rank
+    FROM seats_per_destination
+)
+SELECT 
+    airport_code,
+    airport_name,
+    num_seats,
+    rank
+FROM ranked_destinations
+WHERE rank <= 10
+ORDER BY rank, airport_code;
+```
+
+## Task 2-3
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH mean_departure_delays AS (
+    SELECT 
+        origin AS airport_code,
+        ROUND(AVG(dep_delay), 2) AS mean_departure_delay
+    FROM flights
+    WHERE origin IN ('JFK', 'LGA', 'EWR')
+    GROUP BY origin
+),
+ranked_airports AS (
+    SELECT 
+        airport_code,
+        mean_departure_delay,
+        RANK() OVER (ORDER BY mean_departure_delay DESC) AS rank
+    FROM mean_departure_delays
+)
+SELECT 
+    r.airport_code,
+    a.name AS airport_name,
+    r.mean_departure_delay,
+    r.rank
+FROM ranked_airports r
+INNER JOIN airports a ON r.airport_code = a.faa
+ORDER BY r.rank, r.airport_code;
+```
+
+## Task 2-4
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH ontime_departures AS (
+    SELECT 
+        FLOOR(sched_dep_time / 100) AS hour_of_day,
+        COUNT(*) AS total_flights,
+        SUM(CASE WHEN dep_delay <= 0 THEN 1 ELSE 0 END) AS ontime_flights
+    FROM flights
+    GROUP BY FLOOR(sched_dep_time / 100)
+),
+percent_ontime AS (
+    SELECT
+        hour_of_day,
+        ROUND((ontime_flights::decimal / total_flights) * 100, 2) AS percent_ontime
+    FROM ontime_departures
+)
+SELECT 
+    hour_of_day,
+    percent_ontime
+FROM percent_ontime
+ORDER BY hour_of_day;
+
+```
+
+## Task 2-5
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH planes_multiple_airlines AS (
+    SELECT 
+        f.tailnum,
+        COUNT(DISTINCT f.carrier) AS num_airlines
+    FROM flights f
+    GROUP BY f.tailnum
+    HAVING COUNT(DISTINCT f.carrier) > 1
+)
+SELECT 
+    p.tailnum,
+    p.manufacturer,
+    p.model,
+    a.num_airlines
+FROM planes p
+JOIN planes_multiple_airlines a ON p.tailnum = a.tailnum
+ORDER BY p.tailnum;
+```
+
+# Task 3: Exploring Flights from New York City to Chicago
+
+## Task 3-1
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+CREATE OR REPLACE VIEW chicago_airports AS
+SELECT faa, name 
+FROM airports
+WHERE name ILIKE '%Chicago%';
+
+```
+
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: false
+
+SELECT * FROM chicago_airports;
+```
+
+
+## Task 3-2
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT 
+    f.dest AS airport_code, 
+    a.name AS airport_name, 
+    
+    COUNT(*) AS number_of_flights,
+    RANK() OVER (ORDER BY COUNT(*) DESC, f.dest) AS rank
+FROM flights AS f
+JOIN airports AS a ON f.dest = a.faa
+WHERE f.origin IN ('JFK', 'LGA', 'EWR')  -- Three letter codes for all the NYC airports
+  AND a.name LIKE '%Chicago%'           -- Ensuring only Chicago airports are considered
+GROUP BY f.dest, a.name
+ORDER BY rank, f.dest;
+
+
+
+```
+
+
+## Task 3-3
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    f.carrier AS airline_code,
+    a.name AS airline_name,
+    
+    COUNT(*) AS number_of_flights,
+    RANK() OVER (ORDER BY COUNT(*) DESC, f.carrier) AS rank
+FROM flights f
+JOIN airlines a ON f.carrier = a.carrier
+WHERE f.origin IN ('JFK', 'LGA', 'EWR')  -- Airports in NYC
+  AND f.dest IN (SELECT faa FROM chicago_airports) -- Chicago airports from table 3.1
+GROUP BY f.carrier, a.name
+ORDER BY rank, f.carrier;
+
+```
+
+
+## Task 3-4
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+WITH QualifiedAirlines AS (
+    SELECT carrier
+    FROM flights
+    WHERE origin IN ('JFK', 'LGA', 'EWR')
+      AND dest IN (SELECT faa FROM chicago_airports)  -- From table 3.1 
+    GROUP BY carrier
+    HAVING COUNT(*) >= 100
+),
+FlightDetails AS (
+    SELECT
+        f.carrier,
+        p.manufacturer,
+        p.model,
+        COUNT(*) AS total_flights,
+        COUNT(CASE WHEN f.arr_delay <= 0 THEN 1 END) AS on_time_flights
+    FROM flights f
+    JOIN planes p ON f.tailnum = p.tailnum
+    WHERE f.carrier IN (SELECT carrier FROM QualifiedAirlines)
+      AND f.origin IN ('JFK', 'LGA', 'EWR')
+      AND f.dest IN (SELECT faa FROM chicago_airports)
+      AND f.year = 2013
+    GROUP BY f.carrier, p.manufacturer, p.model
+)
+SELECT
+    manufacturer,
+    model,
+    ROUND((on_time_flights * 100.0) / total_flights, 2) AS percentage_on_time,
+    RANK() OVER (ORDER BY (on_time_flights * 100.0) / total_flights DESC, manufacturer, model) AS rank
+FROM FlightDetails
+ORDER BY rank, manufacturer, model;
+
+```
+
+
+## Task 3-5
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    CASE WHEN COUNT(DISTINCT TO_DATE(year || '-' || month || '-' || day, 'YYYY-MM-DD')) = 365
+         THEN 'TRUE'
+         ELSE 'FALSE'
+    END AS flight_every_day
+FROM flights
+WHERE origin IN ('JFK', 'LGA', 'EWR')  -- NYC Airports
+  AND dest IN (SELECT faa FROM chicago_airports)  -- Table 3.1
+
+```
+
+# Task 4: Uncovering Associations between Weather and Flight Operations
+
+## Task 4-1
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT COUNT(*) AS missing_combinations
+FROM (
+    SELECT f.origin, f.time_hour
+    FROM flights f
+    LEFT JOIN weather w ON f.origin = w.origin AND f.time_hour = w.time_hour
+    WHERE w.origin IS NULL AND w.time_hour IS NULL
+) AS missing_data;
+
+```
+
+## Task 4-2
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    a.faa AS airport_code,
+    a.name AS airport_name,
+    (w.precip = 0) AS is_dry,
+    ROUND(COUNT(*) FILTER (WHERE f.dep_delay <= 0)::decimal / COUNT(*) * 100, 2) AS percentage_on_time
+FROM
+    flights f
+JOIN
+    weather w ON f.origin = w.origin AND f.year = w.year AND f.month = w.month AND f.day = w.day AND f.hour = w.hour
+JOIN
+    airports a ON f.origin = a.faa
+WHERE
+    a.faa IN ('JFK', 'LGA', 'EWR')
+GROUP BY
+    a.faa, a.name, (w.precip = 0)
+ORDER BY
+    a.faa, (w.precip = 0);
+
+```
+
+## Task 4-3
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    a.faa AS airport_code,
+    a.name AS airport_name,
+    ROUND(AVG(f.dep_delay), 2) AS mean_departure_delay,
+    RANK() OVER (ORDER BY AVG(f.dep_delay)) AS rank
+FROM
+    flights f
+JOIN
+    weather w ON f.origin = w.origin AND f.year = w.year AND f.month = w.month AND f.day = w.day AND f.hour = w.hour
+JOIN
+    airports a ON f.origin = a.faa
+WHERE
+    a.faa IN ('JFK', 'LGA', 'EWR') AND w.visib < 1
+GROUP BY
+    a.faa, a.name
+ORDER BY
+    rank, a.faa;
+
+```
+
+## Task 4-4
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    ROUND(CAST(CORR(day_avg_temp, day_avg_delay) AS numeric), 2) AS temperature_delay_correlation
+FROM (
+    SELECT
+        f.origin,
+        f.year,
+        f.month,
+        f.day,
+        AVG(w.temp) AS day_avg_temp,
+        AVG(f.dep_delay) AS day_avg_delay
+    FROM
+        flights f
+    INNER JOIN
+        weather w ON f.origin = w.origin AND f.year = w.year AND f.month = w.month AND f.day = w.day
+    WHERE
+        f.year = 2013
+    GROUP BY
+        f.origin, f.year, f.month, f.day
+) daily_data;
+
+```
+
+## Task 4-5
+```{sql}
+#| connection: con_nycflights13
+#| eval: true
+#| echo: true
+
+SELECT
+    CASE
+        WHEN w.wind_dir BETWEEN 135 AND 225 THEN 'South'
+        WHEN w.wind_dir BETWEEN 0 AND 45 OR w.wind_dir BETWEEN 315 AND 360 THEN 'North'
+        ELSE 'Other'
+    END AS wind_direction,
+    ROUND(AVG(f.air_time), 2) AS mean_air_time
+FROM
+    flights f
+JOIN
+    weather w ON f.origin = w.origin AND f.year = w.year AND f.month = w.month AND f.day = w.day AND f.hour = w.hour
+WHERE
+    f.dest = 'BTV' AND (
+        w.wind_dir BETWEEN 0 AND 45 OR 
+        w.wind_dir BETWEEN 315 AND 360 OR 
+        w.wind_dir BETWEEN 135 AND 225
+    )
+GROUP BY
+    wind_direction
+ORDER BY
+    wind_direction DESC; -- Ensures consistent order: north then south
+
+```
+
+```{R}
+dbDisconnect(con_nycflights13)
+```

@@ -56,9 +56,15 @@ CSV HEADER;
 
 ## Github Manage Access Tab Screenshot
 ![Manage Access Screenshot](screenshots/ManageAccess.jpg)
+*The repository owner’s Manage access page of the GitHub repository, Subtask 1.1*
 
 ## Github Code Tab Screenshot
-![Code Tab Screenshot](screenshots/ManageAccess.jpg)
+![Code Tab Screenshot](screenshots/Commit.jpg)
+*The Code tab in the GitHub repository showing one collaborator’s commit of adding the nycflights13 folder, Subtask 1.2.*
+
+## Github Code Tab Final Commit Screenshot
+![Code Tab Screenshot](screenshots/FinalCommit.jpg)
+*The Code tab in the GitHub repository showing the final commit, when finalizing your work, Step 2 of this section.*
 
 # Task 2: Aggregating Information from the *flights* Table
 
